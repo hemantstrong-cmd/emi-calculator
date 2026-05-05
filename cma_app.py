@@ -1,92 +1,105 @@
-import streamlit as st
-import pandas as pd
-from reportlab.platypus import SimpleDocTemplate, Paragraph
+# file: cma_generator.py
+
+from dataclasses import dataclass
+from typing import List, Dict
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
+from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
-import io
 
-st.title("🏦 CMA Full Tool (3-Year + Formats + PDF)")
 
-# -------- CUSTOMER --------
-name = st.text_input("Customer Name")
+@dataclass
+class BaseFinancials:
+    revenue: float
+    expenses: float
+    assets: float
+    liabilities: float
 
-# -------- P&L (3 Years) --------
-st.header("📊 Profit & Loss (3 Years)")
 
-sales1 = st.number_input("Sales Year 1")
-sales2 = st.number_input("Sales Year 2")
-sales3 = st.number_input("Sales Year 3")
+@dataclass
+class Assumptions:
+    revenue_growth: float
+    expense_growth: float
 
-profit1 = st.number_input("Profit Year 1")
-profit2 = st.number_input("Profit Year 2")
-profit3 = st.number_input("Profit Year 3")
 
-pl_df = pd.DataFrame({
-    "Year": ["Y1","Y2","Y3"],
-    "Sales": [sales1,sales2,sales3],
-    "Profit": [profit1,profit2,profit3]
-})
+class CMAProjector:
 
-# -------- BALANCE SHEET --------
-st.header("📑 Balance Sheet (3 Years)")
+    @staticmethod
+    def project(base: BaseFinancials, assumptions: Assumptions, years: int = 5) -> List[Dict]:
+        data = []
+        revenue = base.revenue
+        expenses = base.expenses
+        assets = base.assets
+        liabilities = base.liabilities
 
-assets1 = st.number_input("Assets Y1")
-assets2 = st.number_input("Assets Y2")
-assets3 = st.number_input("Assets Y3")
+        for year in range(1, years + 1):
+            revenue *= (1 + assumptions.revenue_growth)
+            expenses *= (1 + assumptions.expense_growth)
 
-liab1 = st.number_input("Liabilities Y1")
-liab2 = st.number_input("Liabilities Y2")
-liab3 = st.number_input("Liabilities Y3")
+            profit = revenue - expenses
+            net_worth = assets - liabilities + profit
 
-bs_df = pd.DataFrame({
-    "Year":["Y1","Y2","Y3"],
-    "Assets":[assets1,assets2,assets3],
-    "Liabilities":[liab1,liab2,liab3]
-})
+            data.append({
+                "Year": f"Year {year}",
+                "Revenue": round(revenue, 2),
+                "Expenses": round(expenses, 2),
+                "Profit": round(profit, 2),
+                "Net Worth": round(net_worth, 2)
+            })
 
-# -------- CMA FORMAT V (MPBF) --------
-st.header("📈 MPBF Calculation")
+        return data
 
-stock = st.number_input("Stock")
-debtors = st.number_input("Debtors")
-creditors = st.number_input("Creditors")
 
-wc = stock + debtors
-margin = wc * 0.25
-mpbf = wc - margin
+class PDFGenerator:
 
-st.write(f"MPBF: ₹ {mpbf}")
+    @staticmethod
+    def generate(data: List[Dict], filename: str = "cma_report.pdf"):
+        doc = SimpleDocTemplate(filename)
+        styles = getSampleStyleSheet()
 
-# -------- RATIOS --------
-current_ratio = assets3 / creditors if creditors != 0 else 0
-st.write(f"Current Ratio: {round(current_ratio,2)}")
+        elements = []
+        elements.append(Paragraph("CMA Data (5-Year Projection)", styles["Title"]))
 
-# -------- DISPLAY TABLES --------
-st.subheader("P&L Statement")
-st.dataframe(pl_df)
+        table_data = [["Year", "Revenue", "Expenses", "Profit", "Net Worth"]]
 
-st.subheader("Balance Sheet")
-st.dataframe(bs_df)
+        for row in data:
+            table_data.append([
+                row["Year"],
+                row["Revenue"],
+                row["Expenses"],
+                row["Profit"],
+                row["Net Worth"]
+            ])
 
-# -------- PDF GENERATION --------
-def create_pdf():
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer)
-    styles = getSampleStyleSheet()
+        table = Table(table_data)
 
-    elements = []
-    elements.append(Paragraph(f"CMA Report - {name}", styles['Title']))
-    elements.append(Paragraph(f"MPBF: {mpbf}", styles['Normal']))
-    elements.append(Paragraph(f"Current Ratio: {current_ratio}", styles['Normal']))
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+            ("GRID", (0, 0), (-1, -1), 1, colors.black),
+        ]))
 
-    doc.build(elements)
-    buffer.seek(0)
-    return buffer
+        elements.append(table)
+        doc.build(elements)
 
-pdf = create_pdf()
 
-st.download_button(
-    label="📥 Download CMA PDF",
-    data=pdf,
-    file_name="CMA_Report.pdf",
-    mime="application/pdf"
-)
+def generate_cma_report():
+    base = BaseFinancials(
+        revenue=500000,
+        expenses=300000,
+        assets=800000,
+        liabilities=400000
+    )
+
+    assumptions = Assumptions(
+        revenue_growth=0.10,
+        expense_growth=0.08
+    )
+
+    projected_data = CMAProjector.project(base, assumptions)
+    PDFGenerator.generate(projected_data)
+
+    print("CMA PDF generated successfully.")
+
+
+if __name__ == "__main__":
+    generate_cma_report()
